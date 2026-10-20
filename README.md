@@ -7,8 +7,16 @@ hoặc giọng Trung, sai số đếm (三階 sankai), ngắt nhịp giữa từ
 
 ## Cài đặt (một lần)
 
-Cần Python 3.10+ và git. Có GPU NVIDIA thì cài torch bản CUDA trước theo
-https://pytorch.org/get-started/locally/ (không có GPU vẫn chạy được, chậm hơn).
+Cần Python 3.10+, git, và trình biên dịch C++ (pyopenjtalk không có bản cài sẵn, pip tự biên dịch):
+
+| Máy | Cài trước |
+|---|---|
+| Windows | "Build Tools for Visual Studio" -> chọn *Desktop development with C++* |
+| macOS | `xcode-select --install` |
+| Ubuntu/Debian | `sudo apt install build-essential` |
+
+Có GPU NVIDIA thì cài torch bản CUDA trước theo https://pytorch.org/get-started/locally/
+(không có GPU vẫn chạy được, chậm hơn).
 
 ```
 git clone https://github.com/starbuckskohii-rgb/voice.git
@@ -100,6 +108,7 @@ wav, tries, match = synthesize_checked(model, "庭には二羽鶏がいる。", 
 ## Lưu ý
 
 - CPU: mỗi câu ngắn mất ~15-60 giây mỗi lần sinh; GPU nhanh hơn nhiều.
-- Windows: nếu `pip install pyopenjtalk` lỗi biên dịch, cài `pyopenjtalk-prebuilt` thay thế
-  (chưa test trên Windows).
+- Không thay pyopenjtalk bằng `pyopenjtalk-plus` (bản có sẵn wheel): nó đọc 八本 ハチホン,
+  1,500円 イチ・ゴヒャク, 何人 ナニニン, nên bộ kiểm tra sẽ loại cả bản đọc đúng.
+- Mới test trên Linux; Windows/macOS chưa chạy thử.
 - Kết quả kiểm tra là đo bằng máy (ASR); vẫn nên nghe lại câu quan trọng.

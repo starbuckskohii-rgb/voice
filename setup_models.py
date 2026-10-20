@@ -52,6 +52,11 @@ def main():
             print("VoxCPM2: đang tải (~5 GB)...")
             snapshot_download("openbmb/VoxCPM2", local_dir=target)
 
+    # pyopenjtalk tự tải từ điển open_jtalk (~20 MB) ở lần gọi đầu
+    import pyopenjtalk
+
+    print("OpenJTalk:", pyopenjtalk.g2p("二十歳の誕生日", kana=True))
+
     # thử nhanh phần tiền xử lý
     sys.path.insert(0, os.path.join(HERE, "code"))
     from ja_process_v2 import JapaneseTextPreprocessor
