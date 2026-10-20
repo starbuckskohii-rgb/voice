@@ -44,6 +44,7 @@ PHRASE_FIX = {
 # Cách đọc chỉ định tay (từ dài được ưu tiên trước). Thêm tuỳ ý theo nội dung.
 READING_FIX = {
     "二十歳": "はたち",
+    "20歳": "はたち",
     # "鶏": "にわとり",
     # "人気のない": "ひとけのない",
 }
@@ -219,8 +220,9 @@ def fix_japanese_particles(
 
     text = re.sub(r"\{[^{}|]*\|([^{}|]*)\}", lambda m: hold(m.group(1)), text)
     for word in sorted(READING_FIX, key=len, reverse=True):
-        if word in text:
-            text = text.replace(word, hold(READING_FIX[word]))
+        # không thay khi đứng sau chữ số: 120歳, 百二十歳 vẫn đọc theo số
+        text = re.sub(r"(?<![0-9０-９〇一二三四五六七八九十百千万])" + re.escape(word),
+                      lambda _m, w=word: hold(READING_FIX[w]), text)
 
     if kana_mode == "units":
         text = _replace_units(text)
