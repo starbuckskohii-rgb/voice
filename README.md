@@ -15,7 +15,7 @@ pre = JapaneseTextPreprocessor(custom_dict={"VoxCPM": "ボックスシーピー�
 text = "人気のない場所で、彼は一人で待っていた。"
 if pre.hard_reasons(text):          # câu khó -> nhờ LLM ghi cách đọc {人気|ひとけ}
     text = rewrite_with_llm(text)
-# Tự kiểm tra: đọc thiếu/thừa/sai (ASR), sai cụm số + từ đếm, ngắt nhịp giữa cụm
+# Tự kiểm tra: đọc thiếu/thừa/sai (ASR), sai cụm số + từ đếm, sai từng từ có kanji (祝った→いった), ngắt nhịp giữa cụm
 # (lặng ≥0,15 s giữa từ như ね|こ, sau の như 三匹の|猫, trước trợ từ, giữa các phần của số;
 #  định vị bằng mốc thời gian ASR, không tính chỗ có dấu câu, âm ッ, sau は/から...) -> sinh lại seed khác:
 tr = make_sensevoice_transcriber("sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17")
@@ -26,7 +26,11 @@ Giọng mẫu quyết định độ tự nhiên: dùng bản thu người thật
 (giọng mẫu UTMOS 2.1 -> đầu ra 1.8; giọng người thật UTMOS 3.9 -> đầu ra 3.8, ngang người).
 Kiểm tra ngắt nhịp không báo nhầm trên 40 câu người thật, 36 câu giọng nữ, 12 câu clone JSUT;
 bắt được ね|こと (pipeline cũ), 3匹の|猫と và 2026年|10月 (giọng nam mẫu tự tạo).
-Hiệu chỉnh lại: cong_cu_kiem_tra/pause_calib.py.
+Hiệu chỉnh lại: cong_cu_kiem_tra/pause_calib.py, word_calib.py.
+
+Bắt buộc gọi kiểu Ultimate Cloning (synthesize): prompt_wav + prompt_text ĐÚNG TỪNG CHỮ của audio mẫu.
+Không có prompt -> đầu câu lẫn âm lạ/giọng Trung, nuốt chữ; prompt_text thiếu chữ -> model đọc tiếp
+phần lời bị thiếu và lảm nhảm cuối câu.
 
 ## Thư mục
 - code/ja_process_v2.py — thay cho class JapaneseTextPreprocessor cũ; có hàm synthesize() gọi Ultimate Cloning

@@ -45,6 +45,7 @@ PHRASE_FIX = {
 READING_FIX = {
     "二十歳": "はたち",
     "20歳": "はたち",
+    "鶏": "ニワトリ",  # 二羽鶏: model bỏ mất một "にわ" khi để kanji; katakana thì đọc đủ
     # "鶏": "にわとり",
     # "人気のない": "ひとけのない",
 }
@@ -220,9 +221,21 @@ def fix_japanese_particles(
 
     text = re.sub(r"\{[^{}|]*\|([^{}|]*)\}", lambda m: hold(m.group(1)), text)
     for word in sorted(READING_FIX, key=len, reverse=True):
-        # không thay khi đứng sau chữ số: 120歳, 百二十歳 vẫn đọc theo số
-        text = re.sub(r"(?<![0-9０-９〇一二三四五六七八九十百千万])" + re.escape(word),
-                      lambda _m, w=word: hold(READING_FIX[w]), text)
+        if word not in text:
+            continue
+        # chỉ thay khi khớp đúng ranh giới từ (鶏 trong 二羽鶏, không phải 鶏肉/親鶏/若鶏)
+        # và không đứng sau chữ số (120歳, 百二十歳 vẫn đọc theo số)
+        bounds, pos = {0, len(text)}, 0
+        for w in _tagger(text):
+            pos = text.find(w.surface, pos)
+            bounds.update((pos, pos + len(w.surface)))
+            pos += len(w.surface)
+        parts, last = [], 0
+        for m in re.finditer(r"(?<![0-9０-９〇一二三四五六七八九十百千万])" + re.escape(word), text):
+            if m.start() in bounds and m.end() in bounds:
+                parts += [text[last:m.start()], hold(READING_FIX[word])]
+                last = m.end()
+        text = "".join(parts) + text[last:]
 
     if kana_mode == "units":
         text = _replace_units(text)

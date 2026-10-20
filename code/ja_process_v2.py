@@ -164,6 +164,31 @@ def missing_counters(text: str, heard: str):
     return missing
 
 
+def missing_words(text: str, heard: str):
+    """Các từ có kanji (danh, động, tính, phó từ) mà ASR không nghe ra đúng cách đọc.
+    Sai một từ (祝った iwatta -> itta) chỉ hạ độ khớp cả câu xuống ~0.86 nên phải kiểm
+    tra riêng; cụm số/từ đếm do missing_counters lo."""
+    import pyopenjtalk
+
+    from ja_hard_detect import _normalize_pron
+    from ja_particle_fix import _is_number_node, _node_reading
+
+    text = re.sub(r"\{([^{}|]*)\|[^{}|]*\}", r"\1", text)
+    heard_reading = _normalize_pron(pyopenjtalk.g2p(heard, kana=True)) if heard.strip() else ""
+    missing, prev = [], ""
+    for n in pyopenjtalk.run_frontend(text):
+        reading = _node_reading(n)
+        if (n["pos"] in ("名詞", "動詞", "形容詞", "副詞") and not _is_number_node(n)
+                and re.search(r"[一-鿿々]", n["string"])):
+            want = _normalize_pron(reading)
+            # chuẩn hoá trường âm phụ thuộc âm đứng trước (で+イキ -> デエキ): so cả dạng có ngữ cảnh
+            in_ctx = _normalize_pron(prev[-1:] + reading)[1:] if prev else want
+            if len(want) >= 2 and want not in heard_reading and in_ctx not in heard_reading:
+                missing.append(n["string"])
+        prev = _normalize_pron(reading) or prev
+    return missing
+
+
 def make_sensevoice_transcriber(model_dir: str):
     """ASR kiểm tra nhanh bằng SenseVoice (sherpa-onnx). model_dir = thư mục
     sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17 (tải từ GitHub releases của k2-fsa/sherpa-onnx)."""
@@ -318,21 +343,23 @@ def synthesize_checked(model, text: str, ref_wav: str, ref_text: str, transcribe
                        max_tries: int = 3, min_match: float = 0.85, max_extra: int = 2, **kwargs):
     """Như synthesize(), nhưng nghe lại bằng ASR rồi sinh lại với seed khác khi: đọc
     thiếu/sai (khớp < min_match), đọc thừa ở cuối, sai cụm số/từ đếm (missing_counters),
-    hoặc ngắt nhịp giữa cụm (unexpected_pauses). Trả (wav, số lần thử, độ khớp)."""
+    sai một từ có kanji (missing_words), hoặc ngắt nhịp giữa cụm (unexpected_pauses).
+    Hết lượt thì trả bản ít lỗi nhất. Trả (wav, số lần thử, độ khớp)."""
     sr = model.tts_model.sample_rate
+    processed = (pre or JapaneseTextPreprocessor()).process(text)
     best = None
     for attempt in range(max_tries):
         wav = synthesize(model, text, ref_wav, ref_text, pre=pre, seed=seed + attempt, **kwargs)
         heard = transcribe(wav, sr)
         match, extra = check_reading(text, heard)
-        processed = (pre or JapaneseTextPreprocessor()).process(text)
-        if missing_counters(processed, heard) or unexpected_pauses(wav, sr, processed, heard):
-            match = min(match, min_match - 0.01)  # sai cụm số/từ đếm, hoặc ngắt nhịp giữa cụm: sinh lại
-        if match >= min_match and extra <= max_extra:
+        problems = (len(missing_counters(processed, heard)) + len(missing_words(processed, heard))
+                    + unexpected_pauses(wav, sr, processed, heard))
+        if match >= min_match and extra <= max_extra and not problems:
             return wav, attempt + 1, match
-        if best is None or match - 0.05 * extra > best[2] - 0.05 * best[3]:
-            best = (wav, attempt + 1, match, extra)
-    return best[0], max_tries, best[2]
+        score = (problems + (match < min_match) + (extra > max_extra), -(match - 0.05 * extra))
+        if best is None or score < best[0]:
+            best = (score, wav, match)
+    return best[1], max_tries, best[2]
 
 
 if __name__ == "__main__":
