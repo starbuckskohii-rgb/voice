@@ -180,15 +180,23 @@ def make_sensevoice_transcriber(model_dir: str):
         s = rec.create_stream()
         s.accept_waveform(16000, x)
         rec.decode_stream(s)
-        return s.result.text
+        r = s.result
+        return Heard(r.text, [(tok, t - 0.5) for tok, t in zip(r.tokens, r.timestamps)])
 
     return transcribe
 
 
-def unexpected_pauses(wav, sr: int, text: str, min_pause: float = 0.2, rel_threshold: float = 0.1):
-    """Số chỗ ngắt (lặng >= min_pause giây) giữa câu vượt quá số dấu ngắt trong chữ
-    (、。！？…). VoxCPM2 thỉnh thoảng ngắt giữa cụm (三匹の… 猫と, hoặc ね… こと khi
-    đầu vào là hiragana), nghe như ngập ngừng."""
+class Heard(str):
+    """Chữ ASR nghe được, kèm mốc thời gian từng token [(token, giây)] để định vị chỗ ngắt."""
+
+    def __new__(cls, text, times=None):
+        obj = super().__new__(cls, text)
+        obj.times = times or []
+        return obj
+
+
+def _silences(wav, sr: int, min_pause: float, rel_threshold: float):
+    """Các khoảng lặng giữa câu [(bắt đầu, kết thúc) giây] dài >= min_pause."""
     import numpy as np
 
     x = np.asarray(wav, dtype=np.float32)
@@ -198,16 +206,112 @@ def unexpected_pauses(wav, sr: int, text: str, min_pause: float = 0.2, rel_thres
     thr = rel_threshold * np.sqrt(np.mean(x ** 2))
     voiced = np.where(rms > thr)[0]
     if len(voiced) == 0:
-        return 0
-    inner = rms[voiced[0]: voiced[-1] + 1] <= thr
-    pauses, run = 0, 0
-    for silent in inner:
-        run = run + 1 if silent else 0
-        if run == int(min_pause / 0.01):
-            pauses += 1
-    body = re.sub(r"[。！？!?…]+$", "", text.strip())
-    allowed = len(re.findall(r"[、，,。！？!?…]+", body))
-    return max(0, pauses - allowed)
+        return []
+    out, start = [], None
+    for i in range(voiced[0], voiced[-1] + 2):
+        silent = i <= voiced[-1] and rms[i] <= thr
+        if silent and start is None:
+            start = i
+        elif not silent and start is not None:
+            if i - start >= round(min_pause / 0.01):
+                out.append((start / 100, i / 100))
+            start = None
+    return out
+
+
+def _pron_nodes(text: str):
+    """Các từ theo pyopenjtalk, thêm khoá "r" = cách đọc chuẩn hoá (bỏ dấu trọng âm, ー)."""
+    import pyopenjtalk
+
+    nodes = pyopenjtalk.run_frontend(text)
+    for n in nodes:
+        n["r"] = re.sub(r"[’'ー]", "", n["pron"])
+    return nodes
+
+
+def _tight_boundary(prev, nxt) -> bool:
+    """Ranh giới bên trong một cụm, người Nhật không ngắt ở đây: trước trợ từ/trợ động
+    từ/hậu tố (猫|と), sau の bổ nghĩa (三匹の|猫), sau tiền tố/連体詞 (この|本), giữa các
+    phần của một con số (2026年|10月), giữa hai danh từ ghép (最高|気温)."""
+    from ja_particle_fix import _is_number_node
+
+    if nxt["pos"] in ("助詞", "助動詞") or nxt["pos_group1"] == "接尾":
+        return True
+    if prev["pos"] in ("接頭詞", "連体詞") or (prev["pos"] == "助詞" and prev["pos_group1"] == "連体化"):
+        return True
+    if _is_number_node(prev) and _is_number_node(nxt):
+        return True
+    return prev["pos"] == "名詞" and nxt["pos"] == "名詞" and prev["pos_group1"] != "副詞可能"
+
+
+def _pause_allowed(heard: str, cut: int, text: str) -> bool:
+    """Khoảng lặng ngay sau heard[:cut] có hợp lệ không. Hợp lệ: ở đầu/cuối câu, ở âm ッ
+    (closure tự nhiên), đúng chỗ có dấu câu trong chữ gốc, hoặc ở ranh giới cụm (sau は,
+    から, と...). Không hợp lệ: giữa một từ (ね|こ) hoặc bên trong một cụm (_tight_boundary)."""
+    import difflib
+
+    if cut <= 0 or cut >= len(heard):
+        return True
+    # pyopenjtalk đổi số sang kanji (65 -> 六十五) nên tính lại vị trí cắt trên chữ đã đổi
+    cut = len("".join(n["string"] for n in _pron_nodes(heard[:cut])))
+    nodes, pos, r_cut, prev, nxt = _pron_nodes(heard), 0, 0, None, None
+    for i, n in enumerate(nodes):
+        end = pos + len(n["string"])
+        if cut < end:                          # lặng giữa một từ: chỉ hợp lệ nếu từ có ッ (一回 イッ|カイ)
+            return "ッ" in n["r"]
+        r_cut += len(n["r"])
+        if end == cut:
+            prev, nxt = n, (nodes[i + 1] if i + 1 < len(nodes) else None)
+            break
+        pos = end
+    if prev is None or nxt is None:
+        return True
+    if prev["r"].endswith("ッ") or nxt["r"].startswith("ッ"):
+        return True
+    # đổi vị trí theo cách đọc của chữ ASR sang chữ gốc, xem có dấu câu ở đó không
+    heard_r = "".join(n["r"] for n in nodes)
+    orig_r, puncts = "", set()
+    for n in _pron_nodes(re.sub(r"\{([^{}|]*)\|[^{}|]*\}", r"\1", text)):
+        if re.fullmatch(r"[、，,。！？!?…「」『』（）()\s]+", n["string"]):
+            puncts.add(len(orig_r))
+        else:
+            orig_r += n["r"]
+    sm = difflib.SequenceMatcher(None, heard_r, orig_r, autojunk=False)
+    for _, i1, i2, j1, j2 in sm.get_opcodes():
+        if i1 <= r_cut <= i2:
+            if any(abs(p - (j1 + min(r_cut - i1, j2 - j1))) <= 1 for p in puncts):
+                return True
+            break
+    return not _tight_boundary(prev, nxt)
+
+
+def find_unexpected_pauses(wav, sr: int, text: str, heard=None, min_pause: float = 0.15,
+                           rel_threshold: float = 0.1):
+    """Các chỗ ngắt nhịp bất thường giữa câu: lặng >= min_pause giây ở nơi chữ không có
+    dấu câu và không phải âm ッ. VoxCPM2 thỉnh thoảng ngắt giữa cụm (三匹の… 猫と, hoặc
+    ね… こと khi đầu vào là hiragana), nghe như ngập ngừng.
+    heard: kết quả make_sensevoice_transcriber (có mốc thời gian) để định vị từng chỗ lặng;
+    không có thì so số chỗ lặng với số dấu câu + số ッ. Trả [(giây, "trước|sau")]."""
+    sil = _silences(wav, sr, min_pause, rel_threshold)
+    times = getattr(heard, "times", None)
+    if not times:
+        body = re.sub(r"[。！？!?…]+$", "", text.strip())
+        allowed = len(re.findall(r"[、，,。！？!?…]+", body)) + _reading(body).count("ッ")
+        return [(round(a, 2), "?") for a, _ in sil[allowed:]]
+    toks = [(tok.replace("▁", ""), t) for tok, t in times]
+    full = "".join(tok for tok, _ in toks)
+    out = []
+    for a, b in sil:
+        mid = (a + b) / 2
+        cut = len("".join(tok for tok, t in toks if t < mid))
+        if not _pause_allowed(full, cut, text):
+            out.append((round(a, 2), f"{full[max(0, cut - 3):cut]}|{full[cut:cut + 3]}"))
+    return out
+
+
+def unexpected_pauses(wav, sr: int, text: str, heard=None, **kwargs) -> int:
+    """Số chỗ ngắt nhịp bất thường (xem find_unexpected_pauses)."""
+    return len(find_unexpected_pauses(wav, sr, text, heard, **kwargs))
 
 
 def synthesize_checked(model, text: str, ref_wav: str, ref_text: str, transcribe, pre=None, seed: int = 0,
@@ -222,7 +326,7 @@ def synthesize_checked(model, text: str, ref_wav: str, ref_text: str, transcribe
         heard = transcribe(wav, sr)
         match, extra = check_reading(text, heard)
         processed = (pre or JapaneseTextPreprocessor()).process(text)
-        if missing_counters(processed, heard) or unexpected_pauses(wav, sr, processed):
+        if missing_counters(processed, heard) or unexpected_pauses(wav, sr, processed, heard):
             match = min(match, min_match - 0.01)  # sai cụm số/từ đếm, hoặc ngắt nhịp giữa cụm: sinh lại
         if match >= min_match and extra <= max_extra:
             return wav, attempt + 1, match

@@ -16,15 +16,17 @@ text = "人気のない場所で、彼は一人で待っていた。"
 if pre.hard_reasons(text):          # câu khó -> nhờ LLM ghi cách đọc {人気|ひとけ}
     text = rewrite_with_llm(text)
 # Tự kiểm tra: đọc thiếu/thừa/sai (ASR), sai cụm số + từ đếm, ngắt nhịp giữa cụm
-# (khoảng lặng ≥0,2 s ở chỗ không có dấu câu) -> sinh lại seed khác (khuyên dùng):
+# (lặng ≥0,15 s giữa từ như ね|こ, sau の như 三匹の|猫, trước trợ từ, giữa các phần của số;
+#  định vị bằng mốc thời gian ASR, không tính chỗ có dấu câu, âm ッ, sau は/から...) -> sinh lại seed khác:
 tr = make_sensevoice_transcriber("sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17")
 wav, tries, match = synthesize_checked(model, text, "giong_mau.wav", "lời giọng mẫu, đúng từng chữ", tr)
 # hoặc không kiểm tra: wav = synthesize(model, text, ref_wav=..., ref_text=...)
 ```
 Giọng mẫu quyết định độ tự nhiên: dùng bản thu người thật, rõ, ít nhiễu, 5-10 giây
 (giọng mẫu UTMOS 2.1 -> đầu ra 1.8; giọng người thật UTMOS 3.9 -> đầu ra 3.8, ngang người).
-Giọng mẫu tự tạo cũng hay làm AI ngắt nhịp giữa cụm (28% câu với giọng nữ mẫu, 58% với giọng nam mẫu;
-giọng người thật clone 8%, người thật đọc 2,5%).
+Kiểm tra ngắt nhịp không báo nhầm trên 40 câu người thật, 36 câu giọng nữ, 12 câu clone JSUT;
+bắt được ね|こと (pipeline cũ), 3匹の|猫と và 2026年|10月 (giọng nam mẫu tự tạo).
+Hiệu chỉnh lại: cong_cu_kiem_tra/pause_calib.py.
 
 ## Thư mục
 - code/ja_process_v2.py — thay cho class JapaneseTextPreprocessor cũ; có hàm synthesize() gọi Ultimate Cloning
