@@ -1,0 +1,6 @@
+# Chỉ cần cho cong_cu_kiem_tra/ (chấm trọng âm, độ tự nhiên, so với giọng người thật)
+-r requirements.txt
+librosa
+torchaudio
+transformers
+pyarrow

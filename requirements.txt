@@ -1,16 +1,17 @@
-# Tiền xử lý + gọi VoxCPM2 (code/)
-voxcpm
-fugashi
-unidic
-pyopenjtalk
-numpy
-soundfile
-sherpa-onnx
+# Đã test với Python 3.13, torch 2.14 (CPU). Có GPU NVIDIA: cài torch bản CUDA theo
+# https://pytorch.org/get-started/locally/ TRƯỚC, rồi mới pip install -r requirements.txt.
 
-# Công cụ kiểm tra (cong_cu_kiem_tra/)
-librosa
+# VoxCPM: khoá đúng commit đã test (bản PyPI 2.0.3 khác mã nguồn)
+voxcpm @ git+https://github.com/OpenBMB/VoxCPM.git@cce58a5b59303c9bd63d12f23afe6a49a4a80c59
+
+# tiền xử lý tiếng Nhật
+fugashi>=1.3
+unidic>=1.1
+pyopenjtalk>=0.4
+
+# tự kiểm tra bằng ASR + đọc/ghi audio
+sherpa-onnx>=1.12
+numpy
 scipy
-torch
-torchaudio
-transformers
-pyarrow
+soundfile
+huggingface_hub

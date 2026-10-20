@@ -6,3 +6,7 @@ user_pipeline/
 *_out/
 audio/
 *.jsonl
+/ra/
+/ra*.wav
+/ra*.mp3
+/out*/

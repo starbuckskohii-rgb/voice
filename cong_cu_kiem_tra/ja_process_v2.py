@@ -345,24 +345,37 @@ def unexpected_pauses(wav, sr: int, text: str, heard=None, **kwargs) -> int:
     return len(find_unexpected_pauses(wav, sr, text, heard, **kwargs))
 
 
+def reading_problems(wav, sr: int, text: str, heard, pre=None, min_match: float = 0.85, max_extra: int = 2):
+    """Các lỗi nghe ra trong một bản đọc (rỗng = đạt): đọc thiếu/sai (khớp < min_match),
+    đọc thừa đầu/cuối câu, sai cụm số/từ đếm, sai một từ có kanji, ngắt nhịp giữa cụm.
+    Trả (danh sách lỗi, độ khớp, số mora thừa)."""
+    processed = (pre or JapaneseTextPreprocessor()).process(text)
+    match, extra = check_reading(text, heard)
+    problems = []
+    if match < min_match:
+        problems.append(f"khớp {match:.2f}")
+    if extra > max_extra:
+        problems.append(f"thừa {extra} mora")
+    problems += [f"sai số {w}" for w in missing_counters(processed, heard)]
+    problems += [f"sai từ {w}" for w in missing_words(processed, heard)]
+    problems += [f"ngắt {where}" for _, where in find_unexpected_pauses(wav, sr, processed, heard)]
+    return problems, match, extra
+
+
 def synthesize_checked(model, text: str, ref_wav: str, ref_text: str, transcribe, pre=None, seed: int = 0,
                        max_tries: int = 3, min_match: float = 0.85, max_extra: int = 2, **kwargs):
-    """Như synthesize(), nhưng nghe lại bằng ASR rồi sinh lại với seed khác khi: đọc
-    thiếu/sai (khớp < min_match), đọc thừa ở cuối, sai cụm số/từ đếm (missing_counters),
-    sai một từ có kanji (missing_words), hoặc ngắt nhịp giữa cụm (unexpected_pauses).
-    Hết lượt thì trả bản ít lỗi nhất. Trả (wav, số lần thử, độ khớp)."""
+    """Như synthesize(), nhưng nghe lại bằng ASR rồi sinh lại với seed khác khi
+    reading_problems() thấy lỗi. Hết lượt thì trả bản ít lỗi nhất.
+    Trả (wav, số lần thử, độ khớp)."""
     sr = model.tts_model.sample_rate
-    processed = (pre or JapaneseTextPreprocessor()).process(text)
     best = None
     for attempt in range(max_tries):
         wav = synthesize(model, text, ref_wav, ref_text, pre=pre, seed=seed + attempt, **kwargs)
         heard = transcribe(wav, sr)
-        match, extra = check_reading(text, heard)
-        problems = (len(missing_counters(processed, heard)) + len(missing_words(processed, heard))
-                    + unexpected_pauses(wav, sr, processed, heard))
-        if match >= min_match and extra <= max_extra and not problems:
+        problems, match, extra = reading_problems(wav, sr, text, heard, pre, min_match, max_extra)
+        if not problems:
             return wav, attempt + 1, match
-        score = (problems + (match < min_match) + (extra > max_extra), -(match - 0.05 * extra))
+        score = (len(problems), -(match - 0.05 * extra))
         if best is None or score < best[0]:
             best = (score, wav, match)
     return best[1], max_tries, best[2]
