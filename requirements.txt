@@ -1,0 +1,16 @@
+# Tiền xử lý + gọi VoxCPM2 (code/)
+voxcpm
+fugashi
+unidic
+pyopenjtalk
+numpy
+soundfile
+sherpa-onnx
+
+# Công cụ kiểm tra (cong_cu_kiem_tra/)
+librosa
+scipy
+torch
+torchaudio
+transformers
+pyarrow

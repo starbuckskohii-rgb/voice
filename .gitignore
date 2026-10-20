@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+models/
+asr_models/
+user_pipeline/
+*_out/
+audio/
+*.jsonl
