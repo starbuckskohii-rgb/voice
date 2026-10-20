@@ -34,7 +34,7 @@ _VOWEL_ROWS = {
 _VOWEL_OF = {k: v for v, row in _VOWEL_ROWS.items() for k in row}
 
 # Khác biệt đã biết là vô hại giữa hai từ điển (cùng một cách phát âm).
-_EQUIV = [("トユー", "トイウ"), ("ワタクシ", "ワタシ"), ("ホントー", "ホント"), ("ホントウ", "ホント"), ("タンジョーヒ", "タンジョービ"), ("ヲ", "オ")]
+_EQUIV = [("トユー", "トイウ"), ("ワタクシ", "ワタシ"), ("ホントー", "ホント"), ("ホントウ", "ホント"), ("タンジョーヒ", "タンジョービ"), ("ヲ", "オ"), ("ニッポン", "ニホン")]
 
 # Cụm hiragana dài tối thiểu bao nhiêu chữ thì mới xét tín hiệu 2.
 MIN_HIRAGANA_RUN = 5

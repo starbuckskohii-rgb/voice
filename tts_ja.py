@@ -119,7 +119,7 @@ def main():
 
     wavs = []
     for i, s in enumerate(sentences, 1):
-        hard = pre.hard_reasons(s)
+        hard = pre.hard_reasons(pre.process(s))  # sau khi áp từ điển: từ đã có cách đọc thì không báo
         if hard:
             print(f"  ! câu khó {hard}: nếu đọc sai, ghi cách đọc {{từ|cách đọc}} hoặc thêm vào {os.path.basename(args.dict)}")
         t0 = time.time()
@@ -142,6 +142,7 @@ def main():
         sf.write(out, audio, sr)
         print(f"Đã ghi {out}")
     else:
+        out = os.path.normpath(out)
         os.makedirs(out, exist_ok=True)
         for i, w in enumerate(wavs, 1):
             sf.write(os.path.join(out, f"{i:03d}.wav"), w, sr)

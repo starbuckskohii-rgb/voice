@@ -350,7 +350,8 @@ def reading_problems(wav, sr: int, text: str, heard, pre=None, min_match: float 
     đọc thừa đầu/cuối câu, sai cụm số/từ đếm, sai một từ có kanji, ngắt nhịp giữa cụm.
     Trả (danh sách lỗi, độ khớp, số mora thừa)."""
     processed = (pre or JapaneseTextPreprocessor()).process(text)
-    match, extra = check_reading(text, heard)
+    # so với cả câu gốc (ASR ghi 二十歳 cho ハタチ) lẫn câu đã áp từ điển (VoxCPM -> ボックスシーピーエム)
+    match, extra = max(check_reading(text, heard), check_reading(processed, heard), key=lambda r: (r[0], -r[1]))
     problems = []
     if match < min_match:
         problems.append(f"khớp {match:.2f}")
