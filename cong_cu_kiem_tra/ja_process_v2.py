@@ -127,13 +127,19 @@ def _reading(text: str) -> str:
 
 
 def check_reading(text: str, heard: str):
-    """(độ khớp cách đọc 0-1, số mora thừa ở cuối) giữa câu gốc và chữ ASR nghe được."""
+    """(độ khớp cách đọc 0-1, số mora thừa ở đầu + cuối câu) giữa câu gốc và chữ ASR nghe
+    được. Thừa ở đầu: model lẫn âm lạ trước câu (昼下がり一人で…); thừa ở cuối: lảm nhảm."""
     import difflib
 
     ref, hyp = _reading(text), _reading(heard)
     sm = difflib.SequenceMatcher(None, ref, hyp, autojunk=False)
-    extra = sum(j2 - j1 for op, i1, i2, j1, j2 in sm.get_opcodes() if op == "insert" and i1 == len(ref))
-    return sm.ratio(), extra
+    blocks = [b for b in sm.get_matching_blocks() if b.size]
+    if not blocks:
+        return sm.ratio(), len(hyp)
+    first, last = blocks[0], blocks[-1]
+    lead = max(0, first.b - first.a)
+    trail = max(0, (len(hyp) - last.b - last.size) - (len(ref) - last.a - last.size))
+    return sm.ratio(), lead + trail
 
 
 def missing_counters(text: str, heard: str):
